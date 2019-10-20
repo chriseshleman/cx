@@ -1,0 +1,46 @@
+---
+title: "cx"
+author: "Christopher Eshleman"
+date: "10/20/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#CX Correlation
+
+Note: While trying to read a SPSS file with the read.spss function I found an error. It was due to label (not variable name) repetition in the raw data. A custom (not from me) function provides a work-around: 
+
+```{r echo=FALSE}
+library(foreign) 
+Int2Factor <- function(x)
+{
+  if(!is.null(attr(x, "value.labels"))){
+    vlab <- attr(x, "value.labels")
+    if(sum(duplicated(vlab)) > 0)
+      cat("Duplicated levels:", vlab, "\n")
+    else if(sum(duplicated(names(vlab))) > 0)
+      cat("Duplicated labels:",
+          names(vlab)[duplicated(names(vlab))], "\n")
+    else
+      x <- factor(x, levels = as.numeric(vlab),
+                  labels = names(vlab))
+  }
+  x
+}
+
+```
+
+Now call read.spss with the argument use.value.labels set to FALSE and, later, convert the SPSS categorical variables into R factors with the function: 
+
+```{r echo=FALSE}
+cx = read.spss("2013_TxT_CSS_Dep_SPSS_Database.sav", use.value.labels = FALSE) #to.data.frame=TRUE) 
+cx = lapply(cx, Int2Factor) 
+cx = as.data.frame(cx, stringsAsFactors = FALSE) 
+
+
+```
+
+A correlation analysis here will need to grapple with the wide (big) nature of the data — nearly 2,600 variables. 
