@@ -6,15 +6,25 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
+library(foreign) 
+library(ggplot2) 
+library(MASS) 
+options(warn=-1)
 ```
 
 #CX Correlation
 
+I'm looking at two variables in customer experience data, overall experience and one potential predictor (security screening time). 
+Both are categorical and ordinal. 
+First, check if they're even related, globally. Spearman rho correlation should do the trick. 
+Second, visualize that relationship. A cross tab and, if possible, an accompanying heat map. Or faceted bar plots. 
+Third, use an ordinal logistic regression or linear discriminant analysis to look closer. 
+Fourth, if needed, consider controls via mutivariate analysis. This may require some automated variable selection given the nature of the data set (thousands of potential covariates).
+
 Note: While trying to read a SPSS file with the read.spss function I found an error. It was due to label (not variable name) repetition in the raw data. A custom (not from me) function provides a work-around: 
 
-```{r echo=FALSE}
-library(foreign) 
+```{r, echo=FALSE}
 Int2Factor <- function(x)
 {
   if(!is.null(attr(x, "value.labels"))){
@@ -30,17 +40,84 @@ Int2Factor <- function(x)
   }
   x
 }
-
 ```
 
 Now call read.spss with the argument use.value.labels set to FALSE and, later, convert the SPSS categorical variables into R factors with the function: 
 
-```{r echo=FALSE}
+```{r, echo=FALSE}
 cx = read.spss("2013_TxT_CSS_Dep_SPSS_Database.sav", use.value.labels = FALSE) #to.data.frame=TRUE) 
 cx = lapply(cx, Int2Factor) 
 cx = as.data.frame(cx, stringsAsFactors = FALSE) 
+```
 
+Any correlation analysis needs to grapple with the wide (big) nature of the data — nearly 2,600 variables. A few obvious candidates for focus pop out. First, and most importantly, OVERALLEXPERIENCEFS looks like a catch-all for — well, for travelers' individual experiences using the facility: 
+
+```{r}
+str(cx$OVERALLEXPERIENCEFS, echo=TRUE)
+```
+
+Overall experience is ranked 1-10. But these numbers represent rankings along a qualitative experience scale. So technically it's a qualitative variable (not quantitative) despite the deceptive numeric label. It's an ordinal data point — ordered categories. This is in the weeds but it has implications for analytical purposes later.
+
+```{r, echo=FALSE}
+str(cx$OVERALLEXPERIENCEFS)
+
+cx$factor_OVERALLEXPERIENCEFS = ordered(cx$OVERALLEXPERIENCEFS, levels = 1:10) 
+table(cx$factor_OVERALLEXPERIENCEFS, cx$OVERALLEXPERIENCEFS)
+str(cx$factor_OVERALLEXPERIENCEFS)
+```
+
+Beyond that, analysts' speculation around JD Power airport satisfaction rankings identified security screening as one predictor. The data includes SecurityScreeningTime as a variable: 
+
+```{r, echo=TRUE}
+str(cx$SecurityScreeningTime)
+```
+
+This is also reported qualitatively, despite the fact that the underlying variable being measured is quantitative and continuous. We can set up a continuous (imputed) representation even though it'll lean on certain assumptions regarding actual distribution. For now let's stick to using the data as is (qualitative). 
+
+But classify it as ordinal with the rank we want. 
+
+```{r}
+table(cx$SecurityScreeningTime)
+cx$factor_SecurityScreeningTime = factor(cx$SecurityScreeningTime, order = TRUE, 
+                                levels = c("< 1 minute","1-4 mins.", "5-9 mins.",
+                                    "10-14 mins.", "15-19 mins.", "20-29 mins.", 
+                                    "30-45 mins.", "More than 45 mins."))
+str(cx$factor_SecurityScreeningTime)
+```
+
+What's a raw correlation of these two variables look like? Use a Spearman correlation coefficient for categorical (rank) variables such as these. 
+
+```{r}
+xtabs(~factor_OVERALLEXPERIENCEFS+factor_SecurityScreeningTime, cx) 
+```
+
+#cor(cx$factor_OVERALLEXPERIENCEFS,cx$factor_SecurityScreeningTime, method="spearman", use="pairwise.complete.obs") 
+#cor.test(cx$factor_OVERALLEXPERIENCEFS,cx$factor_SecurityScreeningTime, method="spearman", use="pairwise.complete.obs") 
+
+Good. 
+Figure out how to plot this as bar charts, a heat map, or both. 
+For now, let's just run things. We could use an ordinal logistic regression or a linear discriminant analysis. There's a fairly accessible MASS package that includes proportional odds logistic regression functionality: 
+
+```{r}
+table(cx$factor_SecurityScreeningTime,cx$factor_OVERALLEXPERIENCEFS) 
+#model1 = polr(factor_OVERALLEXPERIENCEFS ~ factor_SecurityScreeningTime, data=cx) 
+model1 = polr(factor_OVERALLEXPERIENCEFS ~ SecurityScreeningTime, data=cx) 
+summary(model1) 
+```
+
+For a one-step increase in screening time (around 5 or 10 minutes), expect a x increase in the expected value of Y. (In the log odds scale.)
+
+LDA ... . 
+
+```{r}
 
 ```
 
-A correlation analysis here will need to grapple with the wide (big) nature of the data — nearly 2,600 variables. 
+
+So does security wait time carry a strong association with overall experience? 
+
+These numbers represent decreasing odds of reporting lower satisfaction categories as you experience higher security screening times. They differ significantly across wait times. A next step might be to try and isolate which pairs of wait time-satisfaction differed, but that'd take a little control work. 
+
+```{r}
+options(warn=0)
+```
